@@ -1,0 +1,29 @@
+<launch>
+    <!-- 可通过参数指定配送任务配置文件，用法：roslaunch delivery_system delivery_start.launch task_config:=xxx.yaml -->
+    <arg name="task_config" default="$(find delivery_system)/config/delivery_task.yaml" />
+
+    <!-- 1. 加载配送任务参数到参数服务器（题目要求） -->
+    <rosparam file="$(arg task_config)" command="load" />
+
+    <!-- 2. 启动Gazebo仿真环境，加载我们的配送世界 -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find delivery_system)/worlds/delivery_world.world" />
+        <arg name="paused" value="false" />
+        <arg name="use_sim_time" value="true" />
+        <arg name="gui" value="true" />
+    </include>
+
+    <!-- 3. 加载机器人URDF模型，生成到Gazebo中 -->
+    <param name="robot_description" command="$(find xacro)/xacro $(find delivery_system)/urdf/delivery_robot.urdf" />
+    <node name="spawn_robot" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+          args="-urdf -model delivery_robot -param robot_description -x 0 -y 0 -z 0.1" />
+
+    <!-- 4. 启动所有功能节点 -->
+    <!-- 任务报告服务节点 -->
+    <node pkg="delivery_system" type="report_server" name="report_server" output="screen" />
+    <!-- 人工异常处理节点 -->
+    <node pkg="delivery_system" type="human_operator" name="human_operator" output="screen" required="true" />
+    <!-- 配送核心控制节点（延迟5秒启动，等Gazebo和其他节点准备好） -->
+    <node pkg="delivery_system" type="delivery_core" name="delivery_core" output="screen" launch-prefix="bash -c 'sleep 5; $0 $@'" />
+
+</launch>

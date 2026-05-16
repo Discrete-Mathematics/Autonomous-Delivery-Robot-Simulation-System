@@ -1,0 +1,144 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="delivery_world">
+    <!-- 地面和灯光 -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <!-- 配送站点1：体积缩小，坐标(3, 0) -->
+    <model name="station_1">
+      <static>true</static>
+      <pose>3.0 0.0 0.0 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder radius="0.1" height="0.8"/> <!-- 半径从0.15→0.1，高度从1.0→0.8，体积缩小 -->
+          </geometry>
+          <material name="green">
+            <ambient>0 0.8 0 1</ambient>
+            <diffuse>0 0.8 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 配送站点2：体积缩小，坐标(3, 3) -->
+    <model name="station_2">
+      <static>true</static>
+      <pose>3.0 3.0 0.0 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder radius="0.1" height="0.8"/>
+          </geometry>
+          <material name="green">
+            <ambient>0 0.8 0 1</ambient>
+            <diffuse>0 0.8 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 配送站点3：体积缩小，坐标(0, 3) -->
+    <model name="station_3">
+      <static>true</static>
+      <pose>0.0 3.0 0.0 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder radius="0.1" height="0.8"/>
+          </geometry>
+          <material name="green">
+            <ambient>0 0.8 0 1</ambient>
+            <diffuse>0 0.8 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 障碍物1：去站点1的路上，体积缩小 -->
+    <model name="obstacle_1">
+      <static>true</static>
+      <pose>1.5 0.0 0.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box size="0.3 0.3 0.8"/> <!-- 体积从0.5→0.3，大幅缩小 -->
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box size="0.3 0.3 0.8"/>
+          </geometry>
+          <material name="red">
+            <ambient>0.8 0 0 1</ambient>
+            <diffuse>0.8 0 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 障碍物2：站点1→站点2的路上，新增 -->
+    <model name="obstacle_2">
+      <static>true</static>
+      <pose>3.0 1.5 0.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box size="0.3 0.3 0.8"/>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box size="0.3 0.3 0.8"/>
+          </geometry>
+          <material name="red">
+            <ambient>0.8 0 0 1</ambient>
+            <diffuse>0.8 0 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 障碍物3：站点2→站点3的路上，新增 -->
+    <model name="obstacle_3">
+      <static>true</static>
+      <pose>1.5 3.0 0.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box size="0.3 0.3 0.8"/>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box size="0.3 0.3 0.8"/>
+          </geometry>
+          <material name="red">
+            <ambient>0.8 0 0 1</ambient>
+            <diffuse>0.8 0 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 物理引擎优化 -->
+    <physics name="default_physics" default="true" type="ode">
+      <max_step_size>0.005</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>200.0</real_time_update_rate>
+      <ode>
+        <solver>
+          <type>quick</type>
+          <iters>10</iters>
+          <sor>1.4</sor>
+        </solver>
+      </ode>
+    </physics>
+
+  </world>
+</sdf>

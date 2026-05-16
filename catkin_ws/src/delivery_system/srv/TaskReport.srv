@@ -1,0 +1,8 @@
+# 请求：任务数据
+float32 total_time          # 总耗时（秒）
+string[] arrived_stations   # 成功到达的站点列表
+string[] exceptions         # 异常记录列表
+---
+# 响应：结果
+bool success                # 报告生成是否成功
+string message              # 反馈信息

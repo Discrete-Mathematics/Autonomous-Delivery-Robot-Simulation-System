@@ -1,0 +1,14 @@
+# 请求
+string error_message        # 异常/障碍描述
+bool is_obstacle            # true=前方障碍需人工决策通行方式
+string station_name         # 当前目标站点名（障碍上报时填写）
+float64 goal_x              # 目标站点 x
+float64 goal_y              # 目标站点 y
+float64 robot_x             # 机器人当前 x
+float64 robot_y             # 机器人当前 y
+---
+# 响应
+bool confirm_continue       # 是否继续执行任务
+uint8 action_mode           # 0=仅确认继续(超时等) 1=自主绕行 2=按人工路径通行
+float64[] path_x            # 人工指定途经点 x 序列（action_mode=2 时有效）
+float64[] path_y            # 人工指定途经点 y 序列

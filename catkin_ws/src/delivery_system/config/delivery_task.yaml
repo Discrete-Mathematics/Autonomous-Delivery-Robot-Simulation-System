@@ -1,0 +1,17 @@
+# 配送站点坐标（和world文件里的位置完全对应）
+stations:
+  station_1:
+    x: 3.0
+    y: 0.0
+    theta: 0.0
+  station_2:
+    x: 3.0
+    y: 3.0
+    theta: 1.57
+  station_3:
+    x: 0.0
+    y: 3.0
+    theta: 3.14
+
+# 单站点配送超时时间（秒）
+delivery_timeout: 180.0
