@@ -9,14 +9,14 @@
       <uri>model://sun</uri>
     </include>
 
-    <!-- 配送站点1：体积缩小，坐标(3, 0) -->
+    <!-- 站点1：和小车同大小，坐标(3, 0) -->
     <model name="station_1">
       <static>true</static>
-      <pose>3.0 0.0 0.0 0 0 0</pose>
+      <pose>3.0 0.0 0.1 0 0 0</pose> <!-- 高度抬到0.1，避免贴地消失 -->
       <link name="link">
         <visual name="visual">
           <geometry>
-            <cylinder radius="0.1" height="0.8"/> <!-- 半径从0.15→0.1，高度从1.0→0.8，体积缩小 -->
+            <box size="0.4 0.3 0.2"/>
           </geometry>
           <material name="green">
             <ambient>0 0.8 0 1</ambient>
@@ -26,14 +26,14 @@
       </link>
     </model>
 
-    <!-- 配送站点2：体积缩小，坐标(3, 3) -->
+    <!-- 站点2：和小车同大小，坐标(3, 3) -->
     <model name="station_2">
       <static>true</static>
-      <pose>3.0 3.0 0.0 0 0 0</pose>
+      <pose>3.0 3.0 0.1 0 0 0</pose>
       <link name="link">
         <visual name="visual">
           <geometry>
-            <cylinder radius="0.1" height="0.8"/>
+            <box size="0.4 0.3 0.2"/>
           </geometry>
           <material name="green">
             <ambient>0 0.8 0 1</ambient>
@@ -43,14 +43,14 @@
       </link>
     </model>
 
-    <!-- 配送站点3：体积缩小，坐标(0, 3) -->
+    <!-- 站点3：和小车同大小，坐标(0, 3) -->
     <model name="station_3">
       <static>true</static>
-      <pose>0.0 3.0 0.0 0 0 0</pose>
+      <pose>0.0 3.0 0.1 0 0 0</pose>
       <link name="link">
         <visual name="visual">
           <geometry>
-            <cylinder radius="0.1" height="0.8"/>
+            <box size="0.4 0.3 0.2"/>
           </geometry>
           <material name="green">
             <ambient>0 0.8 0 1</ambient>
@@ -60,19 +60,19 @@
       </link>
     </model>
 
-    <!-- 障碍物1：去站点1的路上，体积缩小 -->
+    <!-- 障碍物1：和小车同大小，坐标(1.5, 0) -->
     <model name="obstacle_1">
       <static>true</static>
-      <pose>1.5 0.0 0.0 0 0 0</pose>
+      <pose>1.5 0.0 0.1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
-            <box size="0.3 0.3 0.8"/> <!-- 体积从0.5→0.3，大幅缩小 -->
+            <box size="0.4 0.3 0.2"/>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
-            <box size="0.3 0.3 0.8"/>
+            <box size="0.4 0.3 0.2"/>
           </geometry>
           <material name="red">
             <ambient>0.8 0 0 1</ambient>
@@ -82,19 +82,19 @@
       </link>
     </model>
 
-    <!-- 障碍物2：站点1→站点2的路上，新增 -->
+    <!-- 障碍物2：和小车同大小，坐标(3, 1.5) -->
     <model name="obstacle_2">
       <static>true</static>
-      <pose>3.0 1.5 0.0 0 0 0</pose>
+      <pose>3.0 1.5 0.1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
-            <box size="0.3 0.3 0.8"/>
+            <box size="0.4 0.3 0.2"/>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
-            <box size="0.3 0.3 0.8"/>
+            <box size="0.4 0.3 0.2"/>
           </geometry>
           <material name="red">
             <ambient>0.8 0 0 1</ambient>
@@ -104,19 +104,19 @@
       </link>
     </model>
 
-    <!-- 障碍物3：站点2→站点3的路上，新增 -->
+    <!-- 障碍物3：和小车同大小，坐标(1.5, 3) -->
     <model name="obstacle_3">
       <static>true</static>
-      <pose>1.5 3.0 0.0 0 0 0</pose>
+      <pose>1.5 3.0 0.1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
-            <box size="0.3 0.3 0.8"/>
+            <box size="0.4 0.3 0.2"/>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
-            <box size="0.3 0.3 0.8"/>
+            <box size="0.4 0.3 0.2"/>
           </geometry>
           <material name="red">
             <ambient>0.8 0 0 1</ambient>
@@ -131,13 +131,6 @@
       <max_step_size>0.005</max_step_size>
       <real_time_factor>1.0</real_time_factor>
       <real_time_update_rate>200.0</real_time_update_rate>
-      <ode>
-        <solver>
-          <type>quick</type>
-          <iters>10</iters>
-          <sor>1.4</sor>
-        </solver>
-      </ode>
     </physics>
 
   </world>
