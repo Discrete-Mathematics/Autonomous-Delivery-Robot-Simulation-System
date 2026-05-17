@@ -26,6 +26,7 @@ public:
           current_yaw_(0),
           obstacle_detected_(false),
           avoid_turn_sign_(1.0),
+          avoid_clear_frames_(0),
           nav_mode_(Direct)
     {
         vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
@@ -214,6 +215,7 @@ public:
         if (srv.response.action_mode == 1)
         {
             nav_mode_ = AutoAvoid;
+            avoid_clear_frames_ = 0;
             ROS_INFO("人工已确认【自主绕行】，机器人开始尝试绕过障碍");
             status_msg.data = "障碍处理：自主绕行中";
             status_pub_.publish(status_msg);
@@ -330,19 +332,48 @@ public:
             const double ty = target.second;
             const double distance = distanceTo(tx, ty);
 
-            if (obstacle_detected_)
+            // 自主绕行：前方有障则转向，前方通畅则慢速朝目标推进；连续多帧前方通畅才退出绕行
+            if (nav_mode_ == AutoAvoid)
             {
-                if (nav_mode_ == AutoAvoid)
+                if (obstacle_detected_)
                 {
-                    ROS_WARN_THROTTLE(2.0, "自主绕行中...");
+                    avoid_clear_frames_ = 0;
+                    ROS_WARN_THROTTLE(2.0, "自主绕行中：前方有障，原地转向...");
                     vel_msg.linear.x = 0.0;
                     vel_msg.angular.z = avoid_turn_sign_ * 0.75;
-                    vel_pub_.publish(vel_msg);
-                    ros::spinOnce();
-                    rate.sleep();
-                    continue;
                 }
+                else
+                {
+                    ++avoid_clear_frames_;
+                    if (avoid_clear_frames_ < 15)
+                    {
+                        // 刚转开障碍：沿切向慢速前进，避免立刻再次对准障碍
+                        vel_msg.linear.x = 0.2;
+                        vel_msg.angular.z = avoid_turn_sign_ * 0.4;
+                    }
+                    else
+                    {
+                        driveToward(tx, ty, vel_msg);
+                        if (vel_msg.linear.x > 0.25)
+                            vel_msg.linear.x = 0.25;
+                    }
+                    if (avoid_clear_frames_ >= 40)
+                    {
+                        nav_mode_ = Direct;
+                        avoid_clear_frames_ = 0;
+                        ROS_INFO("绕行阶段结束，恢复全速前往站点【%s】", station_name.c_str());
+                        status_msg.data = "绕行完成，继续前往：" + station_name;
+                        status_pub_.publish(status_msg);
+                    }
+                }
+                vel_pub_.publish(vel_msg);
+                ros::spinOnce();
+                rate.sleep();
+                continue;
+            }
 
+            if (obstacle_detected_)
+            {
                 if (!handleObstacleEvent(station_name, goal_x, goal_y))
                     return false;
 
@@ -351,21 +382,16 @@ public:
                 continue;
             }
 
-            if (nav_mode_ == AutoAvoid)
-            {
-                nav_mode_ = Direct;
-                ROS_INFO("前方障碍已绕开，恢复直行前往站点");
-                status_msg.data = "绕行完成，继续前往：" + station_name;
-                status_pub_.publish(status_msg);
-            }
-
             double used_time = (ros::Time::now() - station_start_time).toSec();
             if (used_time > delivery_timeout_)
             {
                 std::string error =
                     "前往" + station_name + "超时，超时时间" + std::to_string((int)delivery_timeout_) + "秒";
-                reportException(error);
-                return false;
+                if (!reportException(error))
+                    return false;
+                station_start_time = ros::Time::now();
+                ROS_INFO("超时已确认，继续尝试前往【%s】", station_name.c_str());
+                continue;
             }
 
             if (nav_mode_ == ManualPath && distance < 0.2)
@@ -452,6 +478,7 @@ private:
     double current_x_, current_y_, current_yaw_;
     bool obstacle_detected_;
     double avoid_turn_sign_;
+    int avoid_clear_frames_;
     double delivery_timeout_;
 
     NavMode nav_mode_;
