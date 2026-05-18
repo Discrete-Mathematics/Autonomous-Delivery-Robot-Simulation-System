@@ -25,8 +25,11 @@ public:
           current_y_(0),
           current_yaw_(0),
           obstacle_detected_(false),
+          min_front_range_(999.0),
           avoid_turn_sign_(1.0),
           avoid_clear_frames_(0),
+          avoid_start_x_(0.0),
+          avoid_start_y_(0.0),
           nav_mode_(Direct)
     {
         vel_pub_ = nh_.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
@@ -76,31 +79,46 @@ public:
         return std::isfinite(static_cast<double>(r)) && r > msg->range_min && r < msg->range_max;
     }
 
+    static bool isBeamBlocked(const sensor_msgs::LaserScan::ConstPtr& msg, float r)
+    {
+        if (!std::isfinite(static_cast<double>(r)))
+            return false;
+        if (r <= msg->range_min + 0.03f)
+            return true;
+        return validRange(msg, r) && r < 0.55f;
+    }
+
     void laserCallback(const sensor_msgs::LaserScan::ConstPtr& msg)
     {
         const int n = static_cast<int>(msg->ranges.size());
+        std::lock_guard<std::mutex> lock(laser_mutex_);
+
         if (n <= 0)
         {
             obstacle_detected_ = false;
+            min_front_range_ = 999.0;
             return;
         }
 
         const int front_center = n / 2;
         const int narrow_half = 15;
-        obstacle_detected_ = false;
+        int blocked_beams = 0;
+        min_front_range_ = 999.0;
 
         for (int i = front_center - narrow_half; i < front_center + narrow_half; ++i)
         {
-            if (i >= 0 && i < n)
-            {
-                const float r = msg->ranges[i];
-                if (validRange(msg, r) && r < 0.5f)
-                {
-                    obstacle_detected_ = true;
-                    break;
-                }
-            }
+            if (i < 0 || i >= n)
+                continue;
+
+            const float r = msg->ranges[i];
+            if (validRange(msg, r))
+                min_front_range_ = std::min(min_front_range_, static_cast<double>(r));
+
+            if (isBeamBlocked(msg, r))
+                ++blocked_beams;
         }
+
+        obstacle_detected_ = (blocked_beams >= 2);
 
         if (!obstacle_detected_)
             return;
@@ -131,6 +149,43 @@ public:
             avoid_turn_sign_ = 1.0;
         else
             avoid_turn_sign_ = -1.0;
+    }
+
+    struct LaserState
+    {
+        bool obstacle_detected;
+        double min_front_range;
+        double avoid_turn_sign;
+    };
+
+    LaserState readLaserState() const
+    {
+        std::lock_guard<std::mutex> lock(laser_mutex_);
+        return {obstacle_detected_, min_front_range_, avoid_turn_sign_};
+    }
+
+    bool isFrontPathClear(const LaserState& laser) const
+    {
+        return !laser.obstacle_detected && laser.min_front_range > 0.55;
+    }
+
+    void briefEscapeAfterConfirm(ros::Rate& rate)
+    {
+        ROS_INFO("人工确认后先小幅脱离障碍，再执行后续路径...");
+        geometry_msgs::Twist vel_msg;
+        for (int i = 0; i < 40 && ros::ok(); ++i)
+        {
+            const LaserState laser = readLaserState();
+            if (isFrontPathClear(laser))
+                break;
+
+            vel_msg.linear.x = -0.08;
+            vel_msg.angular.z = laser.avoid_turn_sign * 0.6;
+            vel_pub_.publish(vel_msg);
+            ros::spinOnce();
+            rate.sleep();
+        }
+        publishStop();
     }
 
     void publishStop()
@@ -214,8 +269,15 @@ public:
 
         if (srv.response.action_mode == 1)
         {
+            {
+                std::lock_guard<std::mutex> lock(odom_mutex_);
+                avoid_start_x_ = current_x_;
+                avoid_start_y_ = current_y_;
+            }
             nav_mode_ = AutoAvoid;
             avoid_clear_frames_ = 0;
+            ros::Rate escape_rate(10);
+            briefEscapeAfterConfirm(escape_rate);
             ROS_INFO("人工已确认【自主绕行】，机器人开始尝试绕过障碍");
             status_msg.data = "障碍处理：自主绕行中";
             status_pub_.publish(status_msg);
@@ -238,6 +300,8 @@ public:
             appendGoalIfNeeded(goal_x, goal_y);
 
             nav_mode_ = ManualPath;
+            ros::Rate escape_rate(10);
+            briefEscapeAfterConfirm(escape_rate);
             ROS_INFO("人工已下发绕行路径，共 %zu 个目标点", manual_waypoints_.size());
             status_msg.data = "障碍处理：按人工路径通行";
             status_pub_.publish(status_msg);
@@ -270,8 +334,8 @@ public:
             return false;
 
         ROS_INFO("收到人工确认，机器人继续运行");
-        obstacle_detected_ = false;
-        ros::Duration(1.0).sleep();
+        ros::Rate escape_rate(10);
+        briefEscapeAfterConfirm(escape_rate);
         return true;
     }
 
@@ -327,41 +391,43 @@ public:
 
         while (ros::ok())
         {
+            const LaserState laser = readLaserState();
             const auto target = currentTarget(goal_x, goal_y);
             const double tx = target.first;
             const double ty = target.second;
             const double distance = distanceTo(tx, ty);
 
-            // 自主绕行：前方有障则转向，前方通畅则慢速朝目标推进；连续多帧前方通畅才退出绕行
+            // 自主绕行：只侧向弧线推进，不直线对准站点；需离开障碍起点且前方足够开阔才结束
             if (nav_mode_ == AutoAvoid)
             {
-                if (obstacle_detected_)
+                double rx = 0.0, ry = 0.0;
+                {
+                    std::lock_guard<std::mutex> lock(odom_mutex_);
+                    rx = current_x_;
+                    ry = current_y_;
+                }
+                const double avoid_travel = hypot(rx - avoid_start_x_, ry - avoid_start_y_);
+                const bool front_clear = isFrontPathClear(laser);
+
+                if (!front_clear)
                 {
                     avoid_clear_frames_ = 0;
-                    ROS_WARN_THROTTLE(2.0, "自主绕行中：前方有障，原地转向...");
+                    ROS_WARN_THROTTLE(2.0, "自主绕行中：前方有障，转向脱困...");
                     vel_msg.linear.x = 0.0;
-                    vel_msg.angular.z = avoid_turn_sign_ * 0.75;
+                    vel_msg.angular.z = laser.avoid_turn_sign * 0.75;
                 }
                 else
                 {
                     ++avoid_clear_frames_;
-                    if (avoid_clear_frames_ < 15)
-                    {
-                        // 刚转开障碍：沿切向慢速前进，避免立刻再次对准障碍
-                        vel_msg.linear.x = 0.2;
-                        vel_msg.angular.z = avoid_turn_sign_ * 0.4;
-                    }
-                    else
-                    {
-                        driveToward(tx, ty, vel_msg);
-                        if (vel_msg.linear.x > 0.25)
-                            vel_msg.linear.x = 0.25;
-                    }
-                    if (avoid_clear_frames_ >= 40)
+                    vel_msg.linear.x = 0.15;
+                    vel_msg.angular.z = laser.avoid_turn_sign * 0.45;
+
+                    if (avoid_clear_frames_ >= 25 && avoid_travel > 0.55)
                     {
                         nav_mode_ = Direct;
                         avoid_clear_frames_ = 0;
-                        ROS_INFO("绕行阶段结束，恢复全速前往站点【%s】", station_name.c_str());
+                        ROS_INFO("绕行阶段结束（已离开障碍区 %.2f m），恢复前往站点【%s】",
+                                 avoid_travel, station_name.c_str());
                         status_msg.data = "绕行完成，继续前往：" + station_name;
                         status_pub_.publish(status_msg);
                     }
@@ -372,7 +438,7 @@ public:
                 continue;
             }
 
-            if (obstacle_detected_)
+            if (laser.obstacle_detected)
             {
                 if (!handleObstacleEvent(station_name, goal_x, goal_y))
                     return false;
@@ -475,10 +541,13 @@ private:
     ros::ServiceClient exception_client_;
 
     std::mutex odom_mutex_;
+    mutable std::mutex laser_mutex_;
     double current_x_, current_y_, current_yaw_;
     bool obstacle_detected_;
+    double min_front_range_;
     double avoid_turn_sign_;
     int avoid_clear_frames_;
+    double avoid_start_x_, avoid_start_y_;
     double delivery_timeout_;
 
     NavMode nav_mode_;
