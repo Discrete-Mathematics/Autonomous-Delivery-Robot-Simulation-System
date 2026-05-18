@@ -57,6 +57,8 @@ public:
 
         start_time_ = ros::Time::now();
         ROS_INFO("配送机器人初始化完成，等待启动...");
+        ROS_INFO("激光判障：前方 %.2f m 内触发停车，开阔判定 > %.2f m",
+                 kObstacleDetectDist, kPathClearDist);
     }
 
     void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
@@ -85,7 +87,7 @@ public:
             return false;
         if (r <= msg->range_min + 0.03f)
             return true;
-        return validRange(msg, r) && r < 0.55f;
+        return validRange(msg, r) && r < kObstacleDetectDist;
     }
 
     void laserCallback(const sensor_msgs::LaserScan::ConstPtr& msg)
@@ -101,7 +103,7 @@ public:
         }
 
         const int front_center = n / 2;
-        const int narrow_half = 15;
+        const int narrow_half = kFrontNarrowHalf;
         int blocked_beams = 0;
         min_front_range_ = 999.0;
 
@@ -118,7 +120,7 @@ public:
                 ++blocked_beams;
         }
 
-        obstacle_detected_ = (blocked_beams >= 2);
+        obstacle_detected_ = (blocked_beams >= kMinBlockedBeams);
 
         if (!obstacle_detected_)
             return;
@@ -166,7 +168,7 @@ public:
 
     bool isFrontPathClear(const LaserState& laser) const
     {
-        return !laser.obstacle_detected && laser.min_front_range > 0.55;
+        return !laser.obstacle_detected && laser.min_front_range > kPathClearDist;
     }
 
     void briefEscapeAfterConfirm(ros::Rate& rate)
@@ -333,9 +335,16 @@ public:
         if (!callExceptionService(srv))
             return false;
 
-        ROS_INFO("收到人工确认，机器人继续运行");
+        ROS_INFO("收到人工确认，先尝试脱离当前位置...");
         ros::Rate escape_rate(10);
         briefEscapeAfterConfirm(escape_rate);
+
+        const LaserState laser = readLaserState();
+        if (isFrontPathClear(laser))
+            ROS_INFO("前方已开阔，将按当前导航模式继续前往站点");
+        else
+            ROS_WARN("脱离后前方仍受阻，将要求指定 a 或 p 绕行（勿再仅用 c 顶障）");
+
         return true;
     }
 
@@ -424,6 +433,24 @@ public:
 
                     if (avoid_clear_frames_ >= 25 && avoid_travel > 0.55)
                     {
+                        const bool still_blocked =
+                            laser.obstacle_detected ||
+                            laser.min_front_range <
+                                static_cast<double>(kObstacleDetectDist);
+
+                        if (still_blocked)
+                        {
+                            avoid_clear_frames_ = 0;
+                            publishStop();
+                            ROS_WARN("自主绕行结束但前方 %.2f m 内仍有障碍，重新上报（请用 a 或 p）",
+                                     kObstacleDetectDist);
+                            if (!handleObstacleEvent(station_name, goal_x, goal_y))
+                                return false;
+                            ros::spinOnce();
+                            rate.sleep();
+                            continue;
+                        }
+
                         nav_mode_ = Direct;
                         avoid_clear_frames_ = 0;
                         ROS_INFO("绕行阶段结束（已离开障碍区 %.2f m），恢复前往站点【%s】",
@@ -456,7 +483,20 @@ public:
                 if (!reportException(error))
                     return false;
                 station_start_time = ros::Time::now();
-                ROS_INFO("超时已确认，继续尝试前往【%s】", station_name.c_str());
+
+                const LaserState laser_after_timeout = readLaserState();
+                if (laser_after_timeout.obstacle_detected ||
+                    !isFrontPathClear(laser_after_timeout))
+                {
+                    ROS_WARN("超时恢复后前方仍有障碍，请使用 a 或 p 指定通行方式");
+                    if (!handleObstacleEvent(station_name, goal_x, goal_y))
+                        return false;
+                    ros::spinOnce();
+                    rate.sleep();
+                    continue;
+                }
+
+                ROS_INFO("超时已确认且前方通畅，继续尝试前往【%s】", station_name.c_str());
                 continue;
             }
 
@@ -532,6 +572,12 @@ public:
     }
 
 private:
+    // 激光判障参数（需与 URDF 中雷达安装高度、world 障碍高度匹配）
+    static constexpr float kObstacleDetectDist = 0.85f;
+    static constexpr double kPathClearDist = 0.75;
+    static constexpr int kFrontNarrowHalf = 20;
+    static constexpr int kMinBlockedBeams = 1;
+
     ros::NodeHandle nh_;
     ros::Publisher vel_pub_;
     ros::Publisher status_pub_;

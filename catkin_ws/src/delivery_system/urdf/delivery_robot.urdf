@@ -103,8 +103,9 @@
       <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
     </inertial>
   </link>
+  <!-- z=0.08：扫描平面约落在障碍竖直中部（spawn z0.1 + 0.08≈0.18m），避免从 0.2m 高处扫过 0.2m 矮障碍 -->
   <joint name="laser_joint" type="fixed">
-    <origin xyz="0.15 0 0.2" rpy="0 0 0"/>
+    <origin xyz="0.15 0 0.08" rpy="0 0 0"/>
     <parent link="base_link"/>
     <child link="laser_link"/>
   </joint>
